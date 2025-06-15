@@ -2,75 +2,168 @@ import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                            QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                            QTextEdit, QFileDialog, QMessageBox, QSpinBox,
-                           QTableWidget, QTableWidgetItem, QHeaderView)
+                           QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox)
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont, QPalette, QColor
 from simplex import SolveEquation, PrintColumn
 
 class SimplexSolverGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Solveur de Programmation Linéaire")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1000, 800)
+        
+        # Set application style
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f0f0f0;
+            }
+            QLabel {
+                font-size: 12px;
+                font-weight: bold;
+                color: #2c3e50;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+            QSpinBox {
+                padding: 5px;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QTableWidget {
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                background-color: white;
+                gridline-color: #ecf0f1;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTextEdit {
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                background-color: white;
+                padding: 10px;
+                font-family: 'Consolas', monospace;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                margin-top: 10px;
+                padding-top: 15px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
         
         # Create central widget and layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
         
         # Input section
-        input_group = QWidget()
+        input_group = QGroupBox("Paramètres du problème")
         input_layout = QVBoxLayout(input_group)
+        input_layout.setSpacing(10)
         
         # Number of constraints and variables
-        size_layout = QHBoxLayout()
+        size_group = QGroupBox("Dimensions")
+        size_layout = QHBoxLayout(size_group)
+        size_layout.setSpacing(20)
+        
         self.n_spin = QSpinBox()
         self.n_spin.setRange(1, 100)
+        self.n_spin.setFixedWidth(100)
         self.m_spin = QSpinBox()
         self.m_spin.setRange(1, 100)
+        self.m_spin.setFixedWidth(100)
+        
         size_layout.addWidget(QLabel("Nombre de contraintes:"))
         size_layout.addWidget(self.n_spin)
         size_layout.addWidget(QLabel("Nombre de variables:"))
         size_layout.addWidget(self.m_spin)
-        input_layout.addLayout(size_layout)
+        size_layout.addStretch()
+        
+        input_layout.addWidget(size_group)
         
         # Matrix A input
+        matrix_group = QGroupBox("Matrice A (coefficients)")
+        matrix_layout = QVBoxLayout(matrix_group)
         self.matrix_a = QTableWidget()
         self.matrix_a.setHorizontalHeaderLabels(["x1", "x2", "x3", "x4", "x5"])
-        input_layout.addWidget(QLabel("Matrice A (coefficients):"))
-        input_layout.addWidget(self.matrix_a)
+        matrix_layout.addWidget(self.matrix_a)
+        input_layout.addWidget(matrix_group)
         
         # Vector b input
+        vector_b_group = QGroupBox("Vecteur b (membre droit)")
+        vector_b_layout = QVBoxLayout(vector_b_group)
         self.vector_b = QTableWidget()
         self.vector_b.setHorizontalHeaderLabels(["b"])
-        input_layout.addWidget(QLabel("Vecteur b (membre droit):"))
-        input_layout.addWidget(self.vector_b)
+        vector_b_layout.addWidget(self.vector_b)
+        input_layout.addWidget(vector_b_group)
         
         # Vector c input
+        vector_c_group = QGroupBox("Vecteur c (fonction objectif)")
+        vector_c_layout = QVBoxLayout(vector_c_group)
         self.vector_c = QTableWidget()
         self.vector_c.setHorizontalHeaderLabels(["c"])
-        input_layout.addWidget(QLabel("Vecteur c (fonction objectif):"))
-        input_layout.addWidget(self.vector_c)
+        vector_c_layout.addWidget(self.vector_c)
+        input_layout.addWidget(vector_c_group)
         
         # Buttons
-        button_layout = QHBoxLayout()
+        button_group = QGroupBox("Actions")
+        button_layout = QHBoxLayout(button_group)
+        button_layout.setSpacing(10)
+        button_layout.setAlignment(Qt.AlignCenter)  # Center the buttons
+        
         self.update_size_btn = QPushButton("Mettre à jour la taille")
+        self.update_size_btn.setFixedWidth(200)
         self.update_size_btn.clicked.connect(self.update_table_sizes)
+        
         self.solve_btn = QPushButton("Résoudre")
+        self.solve_btn.setFixedWidth(200)
         self.solve_btn.clicked.connect(self.solve_problem)
+        
         self.import_btn = QPushButton("Importer depuis un fichier")
+        self.import_btn.setFixedWidth(200)
         self.import_btn.clicked.connect(self.import_from_file)
+        
+        button_layout.addStretch(1)  # Add stretch before buttons
         button_layout.addWidget(self.update_size_btn)
         button_layout.addWidget(self.solve_btn)
         button_layout.addWidget(self.import_btn)
-        input_layout.addLayout(button_layout)
+        button_layout.addStretch(1)  # Add stretch after buttons
+        
+        input_layout.addWidget(button_group)
         
         # Result display
+        result_group = QGroupBox("Solution")
+        result_layout = QVBoxLayout(result_group)
         self.result_display = QTextEdit()
         self.result_display.setReadOnly(True)
-        input_layout.addWidget(QLabel("Solution:"))
-        input_layout.addWidget(self.result_display)
+        self.result_display.setMinimumHeight(150)
+        self.result_display.setFont(QFont('Consolas', 11))
+        result_layout.addWidget(self.result_display)
         
         layout.addWidget(input_group)
+        layout.addWidget(result_group)
         
         # Initialize table sizes
         self.update_table_sizes()
