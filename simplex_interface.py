@@ -9,7 +9,7 @@ from simplex import SolveEquation, PrintColumn
 class SimplexSolverGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Linear Programming Solver")
+        self.setWindowTitle("Solveur de Programmation Linéaire")
         self.setGeometry(100, 100, 800, 600)
         
         # Create central widget and layout
@@ -27,37 +27,37 @@ class SimplexSolverGUI(QMainWindow):
         self.n_spin.setRange(1, 100)
         self.m_spin = QSpinBox()
         self.m_spin.setRange(1, 100)
-        size_layout.addWidget(QLabel("Number of constraints:"))
+        size_layout.addWidget(QLabel("Nombre de contraintes:"))
         size_layout.addWidget(self.n_spin)
-        size_layout.addWidget(QLabel("Number of variables:"))
+        size_layout.addWidget(QLabel("Nombre de variables:"))
         size_layout.addWidget(self.m_spin)
         input_layout.addLayout(size_layout)
         
         # Matrix A input
         self.matrix_a = QTableWidget()
         self.matrix_a.setHorizontalHeaderLabels(["x1", "x2", "x3", "x4", "x5"])
-        input_layout.addWidget(QLabel("Matrix A (coefficients):"))
+        input_layout.addWidget(QLabel("Matrice A (coefficients):"))
         input_layout.addWidget(self.matrix_a)
         
         # Vector b input
         self.vector_b = QTableWidget()
         self.vector_b.setHorizontalHeaderLabels(["b"])
-        input_layout.addWidget(QLabel("Vector b (right-hand side):"))
+        input_layout.addWidget(QLabel("Vecteur b (membre droit):"))
         input_layout.addWidget(self.vector_b)
         
         # Vector c input
         self.vector_c = QTableWidget()
         self.vector_c.setHorizontalHeaderLabels(["c"])
-        input_layout.addWidget(QLabel("Vector c (objective function):"))
+        input_layout.addWidget(QLabel("Vecteur c (fonction objectif):"))
         input_layout.addWidget(self.vector_c)
         
         # Buttons
         button_layout = QHBoxLayout()
-        self.update_size_btn = QPushButton("Update Size")
+        self.update_size_btn = QPushButton("Mettre à jour la taille")
         self.update_size_btn.clicked.connect(self.update_table_sizes)
-        self.solve_btn = QPushButton("Solve")
+        self.solve_btn = QPushButton("Résoudre")
         self.solve_btn.clicked.connect(self.solve_problem)
-        self.import_btn = QPushButton("Import from File")
+        self.import_btn = QPushButton("Importer depuis un fichier")
         self.import_btn.clicked.connect(self.import_from_file)
         button_layout.addWidget(self.update_size_btn)
         button_layout.addWidget(self.solve_btn)
@@ -109,12 +109,12 @@ class SimplexSolverGUI(QMainWindow):
                 for j in range(m):
                     item = self.matrix_a.item(i, j)
                     if not item or not item.text().strip():
-                        QMessageBox.warning(self, "Input Error", f"Please enter a value for A[{i+1},{j+1}]")
+                        QMessageBox.warning(self, "Erreur de saisie", f"Veuillez entrer une valeur pour A[{i+1},{j+1}]")
                         return None
                     try:
                         row.append(float(item.text()))
                     except ValueError:
-                        QMessageBox.warning(self, "Input Error", f"Invalid number in A[{i+1},{j+1}]")
+                        QMessageBox.warning(self, "Erreur de saisie", f"Nombre invalide dans A[{i+1},{j+1}]")
                         return None
                 a.append(row)
             
@@ -123,12 +123,12 @@ class SimplexSolverGUI(QMainWindow):
             for i in range(n):
                 item = self.vector_b.item(i, 0)
                 if not item or not item.text().strip():
-                    QMessageBox.warning(self, "Input Error", f"Please enter a value for b[{i+1}]")
+                    QMessageBox.warning(self, "Erreur de saisie", f"Veuillez entrer une valeur pour b[{i+1}]")
                     return None
                 try:
                     b.append(float(item.text()))
                 except ValueError:
-                    QMessageBox.warning(self, "Input Error", f"Invalid number in b[{i+1}]")
+                    QMessageBox.warning(self, "Erreur de saisie", f"Nombre invalide dans b[{i+1}]")
                     return None
             
             # Get vector c
@@ -136,51 +136,71 @@ class SimplexSolverGUI(QMainWindow):
             for j in range(m):
                 item = self.vector_c.item(0, j)
                 if not item or not item.text().strip():
-                    QMessageBox.warning(self, "Input Error", f"Please enter a value for c[{j+1}]")
+                    QMessageBox.warning(self, "Erreur de saisie", f"Veuillez entrer une valeur pour c[{j+1}]")
                     return None
                 try:
                     c.append(float(item.text()))
                 except ValueError:
-                    QMessageBox.warning(self, "Input Error", f"Invalid number in c[{j+1}]")
+                    QMessageBox.warning(self, "Erreur de saisie", f"Nombre invalide dans c[{j+1}]")
                     return None
             
             return a, b, c, n, m
         except Exception as e:
-            QMessageBox.warning(self, "Input Error", f"An unexpected error occurred: {str(e)}")
+            QMessageBox.warning(self, "Erreur de saisie", f"Une erreur inattendue s'est produite: {str(e)}")
             return None
     
     def solve_problem(self):
         data = self.get_input_data()
         if data:
             a, b, c, n, m = data
+            self.result_display.clear()
+            self.result_display.setText("Tentative de résolution par la méthode du simplexe standard...\n")
+            
+            # First attempt with standard simplex
             solution = SolveEquation(a, b, c, n, m)
             
-            # Display solution
-            self.result_display.clear()
+            # Check if we need to switch to two-phase
+            if solution[0] != -1 and solution[0] != float("inf"):
+                # Verify if the solution is valid
+                invalid_answer = False
+                for i in range(n):
+                    valid_ans = 0
+                    for j in range(m):
+                        valid_ans += a[i][j] * solution[j]
+                    if valid_ans > b[i] + 1e-4:  # Using same epsilon as in simplex.py
+                        invalid_answer = True
+                        break
+                
+                if invalid_answer:
+                    self.result_display.append("\nSolution initiale invalide détectée.\nPassage à la méthode du simplexe en deux phases...\n")
+                    # Second attempt with two-phase
+                    solution = SolveEquation(a, b, c, n, m)
+            
+            # Display final solution
             if solution[0] == -1:
-                self.result_display.setText("No solution")
+                self.result_display.append("\nRésultat: Pas de solution")
             elif solution[0] == float("inf"):
-                self.result_display.setText("Infinity")
+                self.result_display.append("\nRésultat: Infini")
             else:
-                self.result_display.setText("Bounded solution\n")
+                self.result_display.append("\nRésultat: Solution bornée\n")
                 self.result_display.append(" ".join([f"{x:.18f}" for x in solution]))
     
     def import_from_file(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Import Problem", "", "Text Files (*.txt)")
+        file_name, _ = QFileDialog.getOpenFileName(self, "Importer un problème", "", "Fichiers texte (*.txt)")
         if file_name:
             try:
                 with open(file_name, 'r') as f:
                     # Read n and m
                     first_line = f.readline().strip()
                     if not first_line:
-                        raise ValueError("Empty file")
+                        raise ValueError("Fichier vide")
                     
                     try:
                         n, m = map(int, first_line.split())
                         if n <= 0 or m <= 0:
-                            raise ValueError("n and m must be positive integers")
+                            raise ValueError("n et m doivent être des entiers positifs")
                     except ValueError as e:
-                        raise ValueError(f"Invalid n,m format: {str(e)}")
+                        raise ValueError(f"Format n,m invalide: {str(e)}")
                     
                     self.n_spin.setValue(n)
                     self.m_spin.setValue(m)
@@ -190,44 +210,44 @@ class SimplexSolverGUI(QMainWindow):
                     for i in range(n):
                         line = f.readline().strip()
                         if not line:
-                            raise ValueError(f"Missing row {i+1} in matrix A")
+                            raise ValueError(f"Ligne {i+1} manquante dans la matrice A")
                         try:
                             row = list(map(float, line.split()))
                             if len(row) != m:
-                                raise ValueError(f"Row {i+1} in matrix A has wrong number of values")
+                                raise ValueError(f"La ligne {i+1} de la matrice A a un nombre incorrect de valeurs")
                             for j in range(m):
                                 self.matrix_a.setItem(i, j, QTableWidgetItem(str(row[j])))
                         except ValueError as e:
-                            raise ValueError(f"Invalid number in matrix A row {i+1}: {str(e)}")
+                            raise ValueError(f"Nombre invalide dans la ligne {i+1} de la matrice A: {str(e)}")
                     
                     # Read vector b
                     line = f.readline().strip()
                     if not line:
-                        raise ValueError("Missing vector b")
+                        raise ValueError("Vecteur b manquant")
                     try:
                         b = list(map(float, line.split()))
                         if len(b) != n:
-                            raise ValueError("Vector b has wrong number of values")
+                            raise ValueError("Le vecteur b a un nombre incorrect de valeurs")
                         for i in range(n):
                             self.vector_b.setItem(i, 0, QTableWidgetItem(str(b[i])))
                     except ValueError as e:
-                        raise ValueError(f"Invalid number in vector b: {str(e)}")
+                        raise ValueError(f"Nombre invalide dans le vecteur b: {str(e)}")
                     
                     # Read vector c
                     line = f.readline().strip()
                     if not line:
-                        raise ValueError("Missing vector c")
+                        raise ValueError("Vecteur c manquant")
                     try:
                         c = list(map(float, line.split()))
                         if len(c) != m:
-                            raise ValueError("Vector c has wrong number of values")
+                            raise ValueError("Le vecteur c a un nombre incorrect de valeurs")
                         for j in range(m):
                             self.vector_c.setItem(0, j, QTableWidgetItem(str(c[j])))
                     except ValueError as e:
-                        raise ValueError(f"Invalid number in vector c: {str(e)}")
+                        raise ValueError(f"Nombre invalide dans le vecteur c: {str(e)}")
                         
             except Exception as e:
-                QMessageBox.warning(self, "Import Error", f"Error reading file: {str(e)}")
+                QMessageBox.warning(self, "Erreur d'importation", f"Erreur lors de la lecture du fichier: {str(e)}")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
