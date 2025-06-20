@@ -38,14 +38,11 @@ def ReadEquation():
 # [-5, 10,  0, 0, 1, 0, 50]
 # [ 3, -2, -4, 0, 0, 1,  9]
 # [-1, -6,  3, 0, 0, 0,  0]
-def CreateTableau(a, b, c, n, phase_one_optimization):
+def CreateTableau(a, b, c, n, phase_one_optimization, inequality_types):
   tableau = []
   phase_one_row = [0] * (len(c) + n + 2)
-  for i in range (n):
-    #For phase 1 optimization in a the 2-phase simplex method, any inequalities that have a solution less than zero will be flipped
-    #For example 2x -3y <= -10 --> -2x + 3y <= 10
-    #The slack variable is added to the tableau with value -1 to account for the flip in sign
-    #Recall that the two phase approach will ONLY occur if an optimal solution was not initially found
+  slack_count = 0
+  for i in range(n):
     if phase_one_optimization and b[i] < 0:
       slack_variables = [0] * n
       slack_variables[i] = -1.0
@@ -54,8 +51,15 @@ def CreateTableau(a, b, c, n, phase_one_optimization):
       phase_one_row = [a + b for a, b in zip(phase_one_row, tableau_row)]
     else:
       slack_variables = [0] * n
-      slack_variables[i] = 1.0
-      tableau_row = a[i] + slack_variables + [b[i]]
+      if inequality_types[i] == "≤":
+        slack_variables[i] = 1.0
+        tableau_row = a[i] + slack_variables + [b[i]]
+      elif inequality_types[i] == "≥":
+        slack_variables[i] = -1.0
+        tableau_row = a[i] + slack_variables + [b[i]]
+      else:  # "="
+        slack_variables[i] = 0.0
+        tableau_row = a[i] + slack_variables + [b[i]]
       tableau.append(tableau_row)
   final_row = [-1*x for x in c] + [0] * n + [0]
   tableau.append(final_row)
@@ -129,23 +133,21 @@ def ProcessPivotElement(a,pivot_element, phase_one_optimization, phase_one_row):
 #The algorithm will first attempt to solve the tableau assuming a basic feasible solution has been provided. If the tableau provided by the first attempt leads to an invalid solution,
 #meaning one of the inequality equations is violated with one of the values in the initial optimal values, then the algorithm will create a new tableau 
 #and proceed to a two-phase simplex method approach.
-def SolveEquation(a, b, c, n, m):
-    if all(i <= 0 for i in c) and all(i >= 0 for i in b):
-      return [0] * m
-    tableau, phase_one_row = CreateTableau(a, b, c, n, False)
+def SolveEquation(a, b, c, n, m, inequality_types):
+    tableau, phase_one_row = CreateTableau(a, b, c, n, False, inequality_types)
     ans, phase_one_answer = solveTableau(tableau, a, b, m, n, False, phase_one_row)
     #break immediately if the tableau reduced to 
     if ans == [-1] or ans == [float("inf")]:
       return ans
-    invalid_answer = valid_answer(ans, a, b, m, n)
+    invalid_answer = valid_answer(ans, a, b, m, n, inequality_types)
     #Proceed to a two-phase simplex approach if one of the variables in the optimial solution violates an inequality equation
     if invalid_answer:
-      tableau, phase_one_row = CreateTableau(a, b, c, n, True)
+      tableau, phase_one_row = CreateTableau(a, b, c, n, True, inequality_types)
       ans, phase_one_answer = solveTableau(tableau, a, b, m, n, True, phase_one_row)
-      phase_one_answer_invalid = valid_answer(phase_one_answer, a, b, m, n)
+      phase_one_answer_invalid = valid_answer(phase_one_answer, a, b, m, n, inequality_types)
       if ans == [-1] or ans == [float("inf")]:
         return ans
-      invalid_answer = valid_answer(ans, a, b, m, n)
+      invalid_answer = valid_answer(ans, a, b, m, n, inequality_types)
     if invalid_answer:
       if not phase_one_answer_invalid:
         return phase_one_answer
@@ -153,23 +155,51 @@ def SolveEquation(a, b, c, n, m):
         return [-1]
     return ans
 
-def valid_answer(ans, a, b, m, n):
-  invalid_answer = False
-  for i in range(n):
+def determine_answer(tableau, slack, m):
+    ans = [0] * m
+    for j in range(m):
+        if j in slack:
+            row = slack.index(j)
+            ans[j] = tableau[row][-1]
+        else:
+            ans[j] = 0
+    return ans
+
+def valid_answer(ans, a, b, m, n, inequality_types):
+    invalid_answer = False
+    for i in range(n):
         valid_ans = 0
         for j in range(m):
-          valid_ans += a[i][j] * ans[j]
-        if epsilon_greater_than(valid_ans, b[i]):
-          invalid_answer = True
-  if not all(epsilon_greater_than_equal_to(i, 0) for i in ans):
-    invalid_answer = True
-  return invalid_answer
+            valid_ans += a[i][j] * ans[j]
+        if inequality_types[i] == "≤" and epsilon_greater_than(valid_ans, b[i]):
+            invalid_answer = True
+        elif inequality_types[i] == "≥" and epsilon_less_than(valid_ans, b[i]):
+            invalid_answer = True
+        elif inequality_types[i] == "=" and not isclose(valid_ans, b[i]):
+            invalid_answer = True
+        # Debug: print(f"Constraint {i+1}: {valid_ans} {inequality_types[i]} {b[i]}")
+    if not all(epsilon_greater_than_equal_to(i, 0) for i in ans):
+        invalid_answer = True
+    # Debug: print(f"Extracted solution: {ans}")
+    return invalid_answer
 
-def solveTableau(tableau, a, b, m, n, phase_one_optimization, phase_one_row):
+def solveTableau(tableau, a, b, m, n, phase_one_optimization, phase_one_row, steps=None):
+  import copy
   slack_rows = list(range(m,n+m))
   phase_one_complete = False
   phase_one_answer = [0] * m
+  iteration = 0
   while (phase_one_optimization or not all(epsilon_greater_than_equal_to(i, 0) for i in tableau[len(tableau)-1][:-1])):
+    iteration += 1
+    if steps is not None:
+      steps.append({
+        'iteration': iteration,
+        'tableau': copy.deepcopy(tableau),
+        'slack_rows': list(slack_rows),
+        'phase_one_optimization': phase_one_optimization,
+        'phase_one_row': copy.deepcopy(phase_one_row),
+        'pivot': None
+      })
     if phase_one_optimization and all(epsilon_less_than_equal_to(k, 0) for k in phase_one_row[:-1]):
       phase_one_optimization = False
       phase_one_complete = True
@@ -177,6 +207,9 @@ def solveTableau(tableau, a, b, m, n, phase_one_optimization, phase_one_row):
       if all(epsilon_greater_than_equal_to(i, 0) for i in tableau[len(tableau)-1][:-1]):
         break
     no_solution, pivot_element = SelectPivotElement(tableau, m, slack_rows, phase_one_optimization, phase_one_row)
+    if steps is not None and len(steps) > 0:
+      steps[-1]['pivot'] = (pivot_element.row, pivot_element.column)
+      steps[-1]['no_solution'] = no_solution
     if no_solution:
       if phase_one_complete:
         return [-1], phase_one_answer
@@ -184,21 +217,18 @@ def solveTableau(tableau, a, b, m, n, phase_one_optimization, phase_one_row):
          return [float("inf")], phase_one_answer
     slack_rows[pivot_element.row] = pivot_element.column
     tableau, phase_one_row = ProcessPivotElement(tableau, pivot_element, phase_one_optimization, phase_one_row)
+  # Add final tableau
+  if steps is not None:
+    steps.append({
+      'iteration': iteration+1,
+      'tableau': copy.deepcopy(tableau),
+      'slack_rows': list(slack_rows),
+      'phase_one_optimization': phase_one_optimization,
+      'phase_one_row': copy.deepcopy(phase_one_row),
+      'pivot': None,
+      'no_solution': None
+    })
   return determine_answer(tableau, slack_rows, m), phase_one_answer
-
-def determine_answer(tableau, slack, m):
-  ans = [0] * m
-  for i in range(len(slack)):
-    if i < m and i in slack:
-      index = slack.index(i)
-      ans[i] = tableau[index][-1]
-    elif i not in slack and tableau[-1][i] == 0:
-      for j in range(len(tableau)-1):
-        if tableau[j][i] > 0:
-          return [-1]
-    elif i < m:
-      ans[i] = 0
-  return ans
 
 #Measure equality or inequality of two real numbers through an epsilon value EPS
 def epsilon_greater_than(a, b):
